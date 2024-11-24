@@ -8,6 +8,37 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
 </head>
 <body class="bg-gray-100">
+  <!-- Image Modal -->
+  <div id="imageModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="max-w-4xl w-full mx-4 bg-white rounded-lg shadow-lg overflow-hidden">
+      <div class="p-4 bg-gray-100 flex justify-between items-center">
+        <h3 id="modalTitle" class="text-lg font-semibold"></h3>
+        <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-4">
+        <img id="modalImage" src="" alt="Full size image" class="w-full h-auto">
+        <div class="mt-4">
+          <p id="modalModel" class="text-gray-600"></p>
+          <p id="modalTime" class="text-gray-600"></p>
+          <div class="mt-2">
+            <label class="text-sm text-gray-600">Rating:</label>
+            <select id="modalRating" class="w-full mt-1 rounded-md border-gray-300">
+              <option value="">Select rating</option>
+              <option value="1">1 Star</option>
+              <option value="2">2 Stars</option>
+              <option value="3">3 Stars</option>
+              <option value="4">4 Stars</option>
+              <option value="5">5 Stars</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="container mx-auto px-4 py-8">
         <div class="mb-8">
           <h1 class="text-3xl font-bold text-gray-900">AI Image Generator</h1>
@@ -54,6 +85,49 @@
             </div>
 
     <script>
+            function openModal(imageUrl, prompt, model, time, rating) {
+              const modal = document.getElementById('imageModal');
+              const modalImage = document.getElementById('modalImage');
+              const modalTitle = document.getElementById('modalTitle');
+              const modalModel = document.getElementById('modalModel');
+              const modalTime = document.getElementById('modalTime');
+              const modalRating = document.getElementById('modalRating');
+
+              modalImage.src = imageUrl;
+              modalTitle.textContent = prompt;
+              modalModel.textContent = `Model: ${model.split('/').pop()}`;
+              modalTime.textContent = `Generation Time: ${time.toFixed(2)}s`;
+              modalRating.value = rating || '';
+
+              // Store the prompt and model for rating updates
+              modalRating.dataset.prompt = prompt;
+              modalRating.dataset.model = model;
+
+              modal.classList.remove('hidden');
+              modal.classList.add('flex');
+              document.body.style.overflow = 'hidden';
+            }
+
+            function closeModal() {
+              const modal = document.getElementById('imageModal');
+              modal.classList.add('hidden');
+              modal.classList.remove('flex');
+              document.body.style.overflow = 'auto';
+            }
+
+            // Close modal when clicking outside
+            document.getElementById('imageModal').addEventListener('click', function (e) {
+              if (e.target === this) {
+                closeModal();
+              }
+            });
+
+            document.addEventListener('keydown', function (e) {
+              if (e.key === 'Escape') {
+                closeModal();
+              }
+            });
+
           document.addEventListener('DOMContentLoaded', function () {
             const generateBtn = document.getElementById('generateBtn');
             const promptSelect = document.getElementById('promptSelect');
@@ -84,7 +158,7 @@
                     }
                 });
             }
-
+            
           // Load existing images
           async function loadImages() {
             try {
@@ -101,20 +175,23 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 ${images.map(img => `
                                     <div class="bg-white rounded-lg shadow p-4">
-                                        <img src="${img.url}" alt="Generated image" class="w-full h-48 object-cover rounded mb-2">
+                                        <img src="${img.url}" 
+                                             alt="Generated image" 
+                                             class="w-full h-48 object-cover rounded mb-2 cursor-pointer"
+                                             onclick="openModal('${img.url}', '${prompt.replace(/'/g, "\\'")}', '${img.model}', ${img.generation_time}, ${img.rating || 'null'})">
                                         <p class="text-sm text-gray-600">Model: ${img.model.split('/').pop()}</p>
                                         <p class="text-sm text-gray-600">Time: ${img.generation_time.toFixed(2)}s</p>
                                         <div class="mt-2">
                                             <label class="text-sm text-gray-600">Rating:</label>
                                             <select class="rating-select w-full mt-1 rounded-md border-gray-300" 
-                                                    data-prompt="${prompt}" 
+                                                    data-prompt="${prompt.replace(/"/g, '&quot;')}" 
                                                     data-model="${img.model}">
                                                 <option value="">Select rating</option>
                                                 ${[1, 2, 3, 4, 5].map(rating =>
-                  `<option value="${rating}" ${img.rating === rating ? 'selected' : ''}>
+                                                  `<option value="${rating}" ${img.rating === rating ? 'selected' : ''}>
                                                         ${rating} Star${rating !== 1 ? 's' : ''}
                                                     </option>`
-                ).join('')}
+                                ).join('')}
                                             </select>
                                         </div>
                                     </div>
@@ -124,8 +201,8 @@
                 imagesGrid.appendChild(promptGroup);
               }
 
-                  // Add rating event listeners
-                  document.querySelectorAll('.rating-select').forEach(select => {
+              // Add rating event listeners for both grid and modal
+              document.querySelectorAll('.rating-select, #modalRating').forEach(select => {
                     select.addEventListener('change', async (e) => {
                       const formData = new FormData();
                       formData.append('prompt', e.target.dataset.prompt);
@@ -138,7 +215,10 @@
                           body: formData
                         });
                         if (!response.ok) throw new Error('Rating update failed');
-                        updateMetrics();
+
+                        // Refresh the images and metrics after rating update
+                        await loadImages();
+                        await updateMetrics();
                       } catch (error) {
                         console.error('Error updating rating:', error);
                         alert('Failed to update rating');
