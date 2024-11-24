@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div class="container mx-auto px-4 py-8">
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold text-gray-900">AI Image Generator</h1>
+            <p class="text-gray-600">Generate and analyze AI-created images across multiple models</p>
+            </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 class="text-xl font-semibold mb-4">Generate New Image</h2>
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                    <label class="block text-sm font-medium text-gray-700">Select Prompt</label>
+                    <select id="promptSelect"
+                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                      {% for index, prompt in prompts %}
+                      <option value="{{ index }}">{{ prompt }}</option>
+                      {% endfor %}
+                    </select>
+                    </div>
+                <div class="flex justify-end mt-4">
+                  <button id="generateBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    Generate Images Across All Models
+                  </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <h3 class="text-lg font-semibold mb-4">Average Generation Time by Model</h3>
+                <canvas id="generationTimeChart"></canvas>
+                </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold mb-4">Average Ratings by Model</h3>
+                <canvas id="ratingsChart"></canvas>
+                </div>
+                </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold mb-4">Generated Images</h2>
+            <div id="imagesGrid" class="space-y-8">
+              <!-- Images will be grouped by prompt -->
+            </div>
+            </div>
+            </div>
+
+    <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            const generateBtn = document.getElementById('generateBtn');
+            const promptSelect = document.getElementById('promptSelect');
+            const imagesGrid = document.getElementById('imagesGrid');
+            let timeChart, ratingChart;
+
+          // Initialize charts
+          function initializeCharts() {
+            const timeCtx = document.getElementById('generationTimeChart').getContext('2d');
+            const ratingCtx = document.getElementById('ratingsChart').getContext('2d');
+
+              timeChart = new Chart(timeCtx, {
+                type: 'bar',
+                  data: { labels: [], datasets: [] },
+                  options: {
+                    responsive: true,
+                      plugins: { title: { display: true, text: 'Generation Time (seconds)' } }
+                    }
+                });
+
+              ratingChart = new Chart(ratingCtx, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                  responsive: true,
+                  plugins: { title: { display: true, text: 'Average Rating' } },
+                  scales: { y: { min: 0, max: 5 } }
+                    }
+                });
+            }
+
+          // Load existing images
+          async function loadImages() {
+            try {
+              const response = await fetch('/images');
+              const groupedImages = await response.json();
+
+              imagesGrid.innerHTML = '';
+
+              for (const [prompt, images] of Object.entries(groupedImages)) {
+                const promptGroup = document.createElement('div');
+                promptGroup.className = 'mb-8';
+                promptGroup.innerHTML = `
+                            <h3 class="text-lg font-semibold mb-4">${prompt}</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                ${images.map(img => `
+                                    <div class="bg-white rounded-lg shadow p-4">
+                                        <img src="${img.url}" alt="Generated image" class="w-full h-48 object-cover rounded mb-2">
+                                        <p class="text-sm text-gray-600">Model: ${img.model.split('/').pop()}</p>
+                                        <p class="text-sm text-gray-600">Time: ${img.generation_time.toFixed(2)}s</p>
+                                        <div class="mt-2">
+                                            <label class="text-sm text-gray-600">Rating:</label>
+                                            <select class="rating-select w-full mt-1 rounded-md border-gray-300" 
+                                                    data-prompt="${prompt}" 
+                                                    data-model="${img.model}">
+                                                <option value="">Select rating</option>
+                                                ${[1, 2, 3, 4, 5].map(rating =>
+                  `<option value="${rating}" ${img.rating === rating ? 'selected' : ''}>
+                                                        ${rating} Star${rating !== 1 ? 's' : ''}
+                                                    </option>`
+                ).join('')}
+                                            </select>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                imagesGrid.appendChild(promptGroup);
+              }
+
+                  // Add rating event listeners
+                  document.querySelectorAll('.rating-select').forEach(select => {
+                    select.addEventListener('change', async (e) => {
+                      const formData = new FormData();
+                      formData.append('prompt', e.target.dataset.prompt);
+                      formData.append('model', e.target.dataset.model);
+                      formData.append('rating', e.target.value);
+
+                      try {
+                        const response = await fetch('/rate', {
+                          method: 'POST',
+                          body: formData
+                        });
+                        if (!response.ok) throw new Error('Rating update failed');
+                        updateMetrics();
+                      } catch (error) {
+                        console.error('Error updating rating:', error);
+                        alert('Failed to update rating');
+                      }
+                    });
+                    });
+                } catch (error) {
+                  console.error('Error loading images:', error);
+                }
+            }
+
+          // Update metrics and charts
+          async function updateMetrics() {
+              try {
+                  const response = await fetch('/metrics');
+                  const metrics = await response.json();
+
+                  const models = Object.keys(metrics.model_usage).map(m => m.split('/').pop());
+                  const times = Object.values(metrics.model_usage).map(m => m.avg_time);
+                  const ratings = Object.values(metrics.model_usage).map(m => m.avg_rating);
+
+                  timeChart.data = {
+                    labels: models,
+                    datasets: [{
+                      label: 'Average Generation Time',
+                      data: times,
+                      backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                    }]
+                  };
+                  timeChart.update();
+
+                ratingChart.data = {
+                  labels: models,
+                  datasets: [{
+                    label: 'Average Rating',
+                    data: ratings,
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)'
+                  }]
+                };
+                ratingChart.update();
+              } catch (error) {
+                console.error('Error updating metrics:', error);
+              }
+            }
+
+          // Initialize
+          initializeCharts();
+          loadImages();
+          updateMetrics();
+
+          // Handle generation
+          generateBtn.addEventListener('click', async function () {
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+              try {
+                  const formData = new FormData();
+                  formData.append('prompt_index', promptSelect.value);
+
+                  const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                  });
+
+                  if (!response.ok) throw new Error('Generation failed');
+
+                  await loadImages();
+                  await updateMetrics();
+                } catch (error) {
+                  console.error('Error:', error);
+                  alert('Failed to generate images');
+                } finally {
+                  generateBtn.disabled = false;
+                  generateBtn.textContent = 'Generate Images Across All Models';
+                }
+            });
+        });
+        </script>
+</body>
+</html>
