@@ -9,7 +9,7 @@ import logging
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import Dict, List
+from typing import Dict
 import requests
 from PIL import Image, UnidentifiedImageError
 import io
@@ -87,7 +87,8 @@ async def call_cloudflare_api(prompt: str, model: str) -> bytes:
     """
     headers = {
         "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "cf-aig-cache-ttl": "0"
     }
     
     payload = [{
