@@ -3,3 +3,4 @@
 .env.*
 *.db
 static/generated/*
+!data/25-nov/*.db
