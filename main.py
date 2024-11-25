@@ -16,27 +16,21 @@ import io
 from dotenv import load_dotenv
 import base64
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# FastAPI app setup
 app = FastAPI()
 
-# Setup directories
 UPLOAD_DIR = "static/generated"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Setup template and static directories
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Database setup
 Base = declarative_base()
 engine = create_engine('sqlite:///image_generation.db')
 SessionLocal = sessionmaker(bind=engine)
 
-# Configuration
 load_dotenv()
 
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
@@ -44,7 +38,7 @@ CLOUDFLARE_AI_GATEWAY_ID = os.getenv("CLOUDFLARE_AI_GATEWAY_ID")
 CLOUDFLARE_API_URL = f"https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_AI_GATEWAY_ID}"
 API_KEY = os.getenv("CLOUDFLARE_API_KEY")
 
-# Predefined prompts and models
+## Update this list should you want to change the prompts or models
 PROMPTS = [
     "Create macro photos of the intricate patterns on butterfly wings, showcasing the beauty of nature",
     "A 3d render of a futuristic cityscape with flying cars and neon lights, inspired by cyberpunk aesthetics",
@@ -54,7 +48,6 @@ PROMPTS = [
     "Create food photography of fish and chips in the style of Marc Haydon, showcasing the capabilities of the Hasselblad camera",
     "A big neon sign that says 'Welcome to the Future' in a futuristic city setting, with flying cars and tall skyscrapers",
 ]
-
 AI_MODELS = [
     "@cf/lykon/dreamshaper-8-lcm",
     "@cf/black-forest-labs/flux-1-schnell",
@@ -62,7 +55,6 @@ AI_MODELS = [
     "@cf/bytedance/stable-diffusion-xl-lightning"
 ]
 
-# Updated Database model
 class ImageGeneration(Base):
     __tablename__ = "image_generations"
     
@@ -77,8 +69,8 @@ class ImageGeneration(Base):
     # Add unique constraint for prompt + model combination
     __table_args__ = (UniqueConstraint('prompt', 'model', name='unique_prompt_model'),)
 
-# Create database tables
-Base.metadata.drop_all(engine)  # Drop existing tables to handle schema changes
+# NOTE: You might want to do something different for production
+Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 
 async def call_cloudflare_api(prompt: str, model: str) -> bytes:
@@ -124,16 +116,13 @@ async def generate_image(prompt: str, model: str) -> Dict:
     """
     start_time = time.time()
     
-    # Generate image through API
     image_data = await call_cloudflare_api(prompt, model)
     
     try:
-        # Convert to PIL Image
         image = Image.open(io.BytesIO(image_data))
     except UnidentifiedImageError:
         raise HTTPException(status_code=500, detail="Failed to identify image file")
     
-    # Save image locally
     timestamp = int(time.time())
     filename = f"{timestamp}_{model.split('/')[-1]}.png"
     filepath = os.path.join(UPLOAD_DIR, filename)
@@ -169,11 +158,9 @@ async def generate(prompt_index: int = Form(...)):
         prompt = PROMPTS[prompt_index]
         results = []
         
-        # Generate images for all models
         for model in AI_MODELS:
             result = await generate_image(prompt, model)
             
-            # Check for existing record
             db = SessionLocal()
             existing_record = db.query(ImageGeneration).filter_by(
                 prompt=prompt,
@@ -181,12 +168,10 @@ async def generate(prompt_index: int = Form(...)):
             ).first()
             
             if existing_record:
-                # Update existing record
                 existing_record.generation_time = result["generation_time"]
                 existing_record.image_path = result["image_url"]
                 existing_record.created_at = datetime.utcnow()
             else:
-                # Create new record
                 db_record = ImageGeneration(
                     prompt=prompt,
                     model=model,
@@ -278,7 +263,6 @@ async def get_images():
     try:
         results = db.query(ImageGeneration).order_by(ImageGeneration.created_at.desc()).all()
         
-        # Group images by prompt
         grouped_results = {}
         for result in results:
             if result.prompt not in grouped_results:
